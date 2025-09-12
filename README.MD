@@ -40,7 +40,7 @@ Um bot para WhatsApp baseado em *Baileys*, com foco em automação de grupos, br
 
 ## 🚀 Instalação
 
-1. Baixei o bot, disponível em: https://raikken-api.speedhosting.cloud/
+1. Baixei o bot, disponível em: https://mega.nz/file/3DxTWBqA#sAYDC5Xvy-oYMuXYAAdIUi1iBiArTSScpG-vuJ0dOvc
 
 2. Instale as dependências (se necessário)
 npm install
