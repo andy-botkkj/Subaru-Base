@@ -11,11 +11,11 @@ const pino = require("pino");
 const chalk = require('chalk')
 const path= require('path')
 const readline = require("readline");
-const { escolherPersonalidadeSubaru, escolherVideoPorRota, getFileBuffer, checkPrefix, fetchJson, getBuffer, data, hora } = require('./dono/functions.js')
+const { escolherPersonalidadeSubaru, escolherVideoPorRota, getFileBuffer, checkPrefix, fetchJson, getBuffer, data, hora, sincronizarCases, esperar } = require('./dono/functions.js')
 
 const { handleCmds } = require("./index.js");
 let fotoperfil = fs.readFileSync("./database/imgs/perfil.jpeg");
-const { prefix, botName, donoName, donoNmr } = require('./configs/settings.json');
+const { prefix, botName, donoName, donoNmr, idCanal } = require('./configs/settings.json');
 
 const groupMetadataCache = new Map();
 async function getGroupMetadataSafe(groupId) {
@@ -62,7 +62,7 @@ const startConnection = async () => {
     rl.close();
   }
 
-  subaru.ev.on("connection.update", (update) => {
+  subaru.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === "close") {
       const shouldReconnect =
@@ -73,9 +73,12 @@ const startConnection = async () => {
         startConnection();
       }
     } else if (connection === "open") {
-      subaru.updateProfilePicture(subaru.user.id, fotoperfil);
-      subaru.sendMessage(`${donoNmr}@s.whatsapp.net`, {text: `Eu sou Subaru! Não tenho muito para dizer!`})
-      console.log(chalk.blueBright("\nSubaru-Bot ativo!\n"));
+     await subaru.updateProfilePicture(subaru.user.id, fotoperfil);
+     esperar(500)
+     await  subaru.sendMessage(`${donoNmr}@s.whatsapp.net`, {text: `Eu sou Subaru! Não tenho muito para dizer!`})
+     await console.log(chalk.blueBright("\nSubaru-Bot ativo!\n"));
+     await esperar(500)
+     await sincronizarCases(subaru)
     }
   });
 
@@ -85,12 +88,12 @@ const startConnection = async () => {
     const msg = messages[0];
     
     try {
-    if (type !== "notify" || !msg.message || msg.key.fromMe || msg.key.remoteJid === "status@broadcast") {return; }
+    if (type !== "notify" || !msg.message || msg.key.remoteJid === "status@broadcast") {return; }
     if (!msg.message) {return; }
     const info = msg 
     var body = info.message?.conversation || info.message?.viewOnceMessageV2?.message?.imageMessage?.caption || info.message?.viewOnceMessageV2?.message?.videoMessage?.caption || info.message?.imageMessage?.caption || info.message?.videoMessage?.caption || info.message?.extendedTextMessage?.text || info.message?.viewOnceMessage?.message?.videoMessage?.caption || info.message?.viewOnceMessage?.message?.imageMessage?.caption || info.message?.documentWithCaptionMessage?.message?.documentMessage?.caption || info.message?.buttonsMessage?.imageMessage?.caption || info.message?.buttonsResponseMessage?.selectedButtonId || info.message?.listResponseMessage?.singleSelectReply?.selectedRowId || info.message?.templateButtonReplyMessage?.selectedId || info?.text || info.message?.editedMessage?.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text || info.message?.editedMessage?.message?.protocolMessage?.editedMessage?.imageMessage?.caption || info.message?.conversation || info.message?.viewOnceMessageV2?.message?.imageMessage?.caption || info.message?.viewOnceMessageV2?.message?.videoMessage?.caption || info.message?.imageMessage?.caption || info.message?.videoMessage?.caption || info.message?.extendedTextMessage?.text || info.message?.viewOnceMessage?.message?.videoMessage?.caption || info.message?.viewOnceMessage?.message?.imageMessage?.caption || info.message?.documentWithCaptionMessage?.message?.documentMessage?.caption || info.message?.buttonsMessage?.imageMessage?.caption || info.message?.buttonsResponseMessage?.selectedButtonId || info.message?.listResponseMessage?.singleSelectReply?.selectedRowId || info.message?.templateButtonReplyMessage?.selectedId || JSON.parse(info.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson || '{}')?.id || 
    info?.text || '';
-    const from = msg.key.remoteJid;
+    const from = msg.key.remoteJid;    
     const isGroup = from.endsWith("@g.us");
     const isCmd = body.startsWith(prefix);
     const sender = msg.key.participant || msg.key.remoteJid;
@@ -149,7 +152,7 @@ const startConnection = async () => {
         console.error('Erro inesperado:', err);
     }
   });
-
+  
   subaru.ev.on("group-participants.update", async (update) => {
     const { id, action, participants } = update;
     const groupSettingsPath = `./database/grupos/${id}.json`;
@@ -199,4 +202,4 @@ fs.watchFile(__filename, () => {
   process.exit();
 });
 
-startConnection().catch((err) => console.error("Erro fatal ao iniciar a conexão:", err));
+startConnection().catch((err) => console.error("Erro fatal ao iniciar a conexão:", err));    

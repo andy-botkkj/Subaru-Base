@@ -10,12 +10,12 @@
 /* ===========================//CONSTS\\================================//*/
 const { default:makeWASocket, DisconnectReason, useMultiFileAuthState,fetchLatestBaileysVersion, isJidBroadcast, isJidStatusBroadcast, proto, makeInMemoryStore, makeCacheableSignalKeyStore, PHONENUMBER_MCC, delay, downloadContentFromMessage, relayWAMessage, mentionedJid, processTime, MediaType, Browser, MessageType, Presence, Mimetype, Browsers, getLastMessageInChat, WA_DEFAULT_EPHEMERAL, generateWAMessageFromContent, downloadAndSaveMedia, logger, getContentType, INativeFlowMessage, messageStubType, WAMessageStubType, BufferJSON, generateWAMessageContent, downloadMediaMessage, prepareWAMessageMedia, baileys } = require("baileys");
 
-const { os, fs, path, exec, spawn, crypto, axios, fetch, FormData, cheerio, moment, mss, sendPoll, imageToWebp, videoToWebp, writeExifImg, writeExifVid, imageToWebp2, videoToWebp2, writeExifImg2, writeExifVid2, getMembros } = require('./dono/exports-consts.js')
+const { os, fs, path, exec, spawn, crypto, axios, fetch, FormData, cheerio, moment, mss, sendPoll, imageToWebp, videoToWebp, writeExifImg, writeExifVid, imageToWebp2, videoToWebp2, writeExifImg2, writeExifVid2, getMembros, util } = require('./dono/exports-consts.js')
 
-const { prefix, botName, donoName, donoNmr, RaikkenKey, baseRaikken, idCanal} = require('./configs/settings.json');
+const { prefix, botName, donoName, donoNmr, RaikkenKey, baseRaikken, idCanal, botNumber } = require('./configs/settings.json');
 const { menumembros, menuAdm, menubn, menudono, menugeral } = require('./configs/menus.js')
-const { escolherPersonalidadeSubaru, escolherVideoPorRota, getFileBuffer, checkPrefix, fetchJson, getBuffer, data, hora } = require('./dono/functions.js')
-const { selogpt,  seloCriador, seloGpt,  seloMeta,  seloLuzia,  seloLaura,  seloCopilot,  seloNubank,  seloBb,  seloBradesco, seloSantander,  seloItau, selodoc, pay, seloSz,  seloface,  seloluzia } = require("./dono/fileSz.js")
+const { escolherPersonalidadeSubaru, escolherVideoPorRota, getFileBuffer, checkPrefix, fetchJson, getBuffer, data, hora, loadJSON, saveJSON, saveJSON2, sincronizarCases, lerOuCriarJSON } = require('./dono/functions.js')
+const { selogpt,seloCriador, seloGpt,seloMeta,seloLuzia,seloLaura,seloCopilot,seloNubank,seloBb,seloBradesco, seloSantander,seloItau, selodoc, pay, seloSz,seloface,seloluzia } = require("./dono/fileSz.js")
 
 const selo = seloSz
 
@@ -46,9 +46,9 @@ const command = body.slice(prefix.length).trim().split(/ +/).shift().toLowerCase
 const args = body.trim().split(/ +/).slice(1);
 const q = args.join(' ');
 const sz = q
-const from = msg.key.remoteJid;
+const from = msg.key.remoteJid || msg.key.remoteLid
 const isGroup = from.endsWith('@g.us');
-const sender = msg.key.participant || msg.key.remoteJid;
+const sender = msg.key.participant || msg.key.remoteJid || msg.key.remoteLid || msg.key.participantLid;
 const userJid = info?.key?.participant?.replace(/:[0-9][0-9]|:[0-9]/g, "");
 const type = msg.type
 const isJsonIncludes = (json, value) => {
@@ -73,6 +73,7 @@ const isMedia = isImage || isVideo || isSticker || isAudio || isVisuU2;
 const quoted = info.message?.extendedTextMessage?.contextInfo?.quotedMessage || info.quoted || false;
 const quotedType = quoted ? Object.keys(quoted)[0] : null;
 const isQuotedMsg = quotedType === 'conversation';
+const isQuotedMsg2 = quotedType === 'text'
 const isQuotedText = quotedType === 'extendedTextMessage';
 const isQuotedImage = quotedType === 'imageMessage';
 const isQuotedVideo = quotedType === 'videoMessage';
@@ -83,6 +84,13 @@ const isQuotedContact = quotedType === 'contactMessage';
 const isQuotedLocation = quotedType === 'locationMessage';
 const isQuotedProduct = quotedType === 'productMessage';
 const isQuotedViewOnce = quotedType === 'viewOnceMessage' || quotedType === 'viewOnceMessageV2';
+const isQuotedDocW = quotedType === 'documentWithCaptionMessage'
+const imgCaption   = (isQuotedImage ? quoted?.imageMessage?.caption : info.message?.imageMessage?.caption) || "";
+const vidCaption   = (isQuotedVideo ? quoted?.videoMessage?.caption : info.message?.videoMessage?.caption) || "";
+const convText     = (isQuotedMsg ? quoted?.conversation : info.message?.conversation) || "";
+const extdText     = (isQuotedText ? quoted?.extendedTextMessage?.text : info.message?.extendedTextMessage?.text) || "";
+const docNoCap     = (isQuotedDocument ? quoted?.documentMessage?.caption : info.message?.documentMessage?.caption) || "";
+const docWCap      = (isQuotedDocW ? quoted?.documentWithCaptionMessage?.message?.documentMessage?.caption : info.message?.documentWithCaptionMessage?.message?.documentMessage?.caption) || "";
 
 function getGroupAdmins(participants) {
 admins = []
@@ -126,6 +134,8 @@ chunks.push(chunk);
 }
 return chunks;
 }
+
+
 //====================( FUNÇÕES DE ENVIO DE MÍDIA )====================//
 // Envia uma resposta de texto estilizada como se fosse de um canal.
 async function reply(texto) {
@@ -212,67 +222,133 @@ members.push(word.slice(1) + '@s.whatsapp.net');
 }}}
 await subaru.sendMessage(from, { text: teks.trim(), mentions: members }, { quoted: ms });
 }
+
+//=====================( ABAIXO O AUSENTE/AFK )====================//
+let afkData = {};
+try {
+const data = fs.readFileSync('./database/users/ausente.json', 'utf8');
+if (data) {
+afkData = JSON.parse(data);
+}
+} catch (error) {
+if (error.code === 'ENOENT') {
+fs.writeFileSync('./database/users/ausente.json', JSON.stringify({}));
+} else {
+console.error('Erro ao carregar afkData do arquivo JSON:', error.message);
+}}
+function verificarAFK(marc_tds) {
+if (afkData[marc_tds] && afkData[marc_tds].motivo) {
+const tempoSaida = afkData[marc_tds].tempoSaida;
+if (isNaN(tempoSaida)) {
+console.error('Erro: tempoSaida não é um número válido');
+return null;
+}
+const tempoOffline = Date.now() - tempoSaida;
+const milissegundosOffline = tempoOffline % 1000;
+const segundosOffline = Math.floor(tempoOffline / 1000) % 60;
+const minutosOffline = Math.floor(tempoOffline / (1000 * 60)) % 60;
+const horasOffline = Math.floor(tempoOffline / (1000 * 60 * 60));
+// by duarte
+return `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓
+│ ╭┈ׅ᳝ׅ𑂳໋֕𔓕᳝ׅ┉۪࣮᪲۟۫─ׅ͚᷂࠭━⵿໋݊┅᮫ׅ᳝۫💀࣭࣪࣪┅⵿᳝۟━໋ׅ࣪࣪─໋͚ׅ۪֘┉᳝ׅ᪲𔓕۪࣪
+┃࣪ ┃࣪ *❌ Esse usuário está off!❌*
+┃࣪ ┃࣪ *🔮 Motivo:* ${afkData[marc_tds].motivo}
+┃࣪ ┃࣪ *⏰ Tempo Offline:* ${horasOffline}h ${minutosOffline}m ${segundosOffline}s
+┃࣪ ╰┈ׅ᳝ׅ𑂳໋֕𔓕᳝ׅ┉۪࣮᪲۟۫─ׅ͚᷂࠭━⵿໋݊┅᮫ׅ᳝۫💀࣭࣪࣪┅⵿᳝۟━໋ׅ࣪࣪─໋͚ׅ۪֘┉᳝ׅ᪲𔓕۪࣪
+┗╾ׁ═┮✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┛`;
+}
+return null;
+}
+const mencionadosAfk = menc_jid2?.length ? menc_jid2 : (menc_jid ? [menc_jid] : []);
+mencionadosAfk.forEach(jid => {
+const afkMessage = verificarAFK(jid);
+if (afkMessage) {
+subaru.sendMessage(from, { text: afkMessage, mentions: [jid] });
+}
+});
+
+if (afkData[sender]) {
+const motivoDeVolta = afkData[sender].motivo;
+const nomeDoUser = afkData[sender].numero;
+const tempoSaida = afkData[sender].tempoSaida;
+delete afkData[sender];
+fs.writeFileSync('./database/users/ausente.json', JSON.stringify(afkData));
+const tempoOffline = Date.now() - tempoSaida;
+const milissegundosOffline = tempoOffline % 1000;
+const segundosOffline = Math.floor(tempoOffline / 1000) % 60;
+const minutosOffline = Math.floor(tempoOffline / (1000 * 60)) % 60;
+const horasOffline = Math.floor(tempoOffline / (1000 * 60 * 60));
+await subaru.sendMessage(from, { text: `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓
+│ ╭┈ׅ᳝ׅ𑂳໋֕𔓕᳝ׅ┉۪࣮᪲۟۫─ׅ͚᷂࠭━⵿໋݊┅᮫ׅ᳝۫💀࣭࣪࣪┅⵿᳝۟━໋ׅ࣪࣪─໋͚ׅ۪֘┉᳝ׅ᪲𔓕۪࣪
+┃࣪ ┃࣪ *Olha quem voltou!*
+┃࣪ ┃࣪ *🔮 Motivo do AFK:* ${motivoDeVolta}
+┃࣪ ┃࣪ *⏰ Tempo Offline:* ${horasOffline}h ${minutosOffline}m ${segundosOffline}s ${milissegundosOffline}ms
+┃࣪ ╰┈ׅ᳝ׅ𑂳໋֕𔓕᳝ׅ┉۪࣮᪲۟۫─ׅ͚᷂࠭━⵿໋݊┅᮫ׅ᳝۫💀࣭࣪࣪┅⵿᳝۟━໋ׅ࣪࣪─໋͚ׅ۪֘┉᳝ׅ᪲𔓕۪࣪
+┗╾ׁ═┮✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┛`, mentions: [nomeDoUser] }, { quoted: info });
+}
+//====================( FUNÇÕES DO AUSENTE/AFK )====================//
+
 //====================( FUNÇÕES DO RENAME )====================//
 const { Sticker } = require("./database/outros/sticker/rename/sticker.js");
 const figname = JSON.parse(fs.readFileSync("./database/outros/sticker/figname.json"))
-  const permuteFigPackName = (secondtxt, usu = sender) => {
+const permuteFigPackName = (secondtxt, usu = sender) => {
 if(isJsonIncludes(figname, usu)) {
-  AB = figname.map(i => i.id).indexOf(usu)
-  if(isJsonIncludes(figname[AB].fig, "pack")) {
+AB = figname.map(i => i.id).indexOf(usu)
+if(isJsonIncludes(figname[AB].fig, "pack")) {
 BC = figname[AB].fig.map(i => i.mod).indexOf("pack")
 return figname[AB].fig[BC].pack
 } else return secondtxt
-  } else return secondtxt
+} else return secondtxt
 }
 const permuteFigAuthorName = (secondtxt, usu = sender) => {
 if(isJsonIncludes(figname, usu)) {
-  AB = figname.map(i => i.id).indexOf(usu)
-  if(isJsonIncludes(figname[AB].fig, "author")) {
+AB = figname.map(i => i.id).indexOf(usu)
+if(isJsonIncludes(figname[AB].fig, "author")) {
 BC = figname[AB].fig.map(i => i.mod).indexOf("author")
 return figname[AB].fig[BC].author
 } else return secondtxt
-  } else return secondtxt
+} else return secondtxt
 }
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function renameContextSticker(pack, autor, txt = ``, hehe) {
-  try {
+try {
 getfile = await getFileBuffer(info.message.extendedTextMessage.contextInfo.quotedMessage.stickerMessage, 'sticker');
 var _sticker = new Sticker()
 _sticker.addFile(getfile); 
 _sticker.options.metadata = {pack: pack, author: data, emojis: ['🤠', '🥶', '😻']};
-   resultadoSt = await _sticker.start();
-await andy.sendMessage(from, {sticker: fs.readFileSync(resultadoSt[0].value), contextInfo: {externalAdReply: {title: "FIGURINHA KIBADAKKKKKJ", body:"", previewType:"PHOTO", thumbnail: fs.readFileSync(resultadoSt[0].value)}}}, {quoted: selo})
+ resultadoSt = await _sticker.start();
+await subaru.sendMessage(from, {sticker: fs.readFileSync(resultadoSt[0].value), contextInfo: {externalAdReply: {title: "FIGURINHA KIBADAKKKKKJ", body:"", previewType:"PHOTO", thumbnail: fs.readFileSync(resultadoSt[0].value)}}}, {quoted: selo})
 await fs.unlinkSync(resultadoSt[0].value)
-  } catch(e) {console.log(e)}
+} catch(e) {console.log(e)}
 }
 
 async function renameContextSticker3(pack, autor, txt = ``, hehe) {
 const isJsonIncludes = (json, value) => {
 if(JSON.stringify(json).includes(value)) return true
 return false}
-  const permuteFigPackName = (secondtxt, usu = sender) => {
+const permuteFigPackName = (secondtxt, usu = sender) => {
 if(isJsonIncludes(figname, usu)) {
-  AB = figname.map(i => i.id).indexOf(usu)
-  if(isJsonIncludes(figname[AB].fig, "pack")) {
+AB = figname.map(i => i.id).indexOf(usu)
+if(isJsonIncludes(figname[AB].fig, "pack")) {
 BC = figname[AB].fig.map(i => i.mod).indexOf("pack")
 return figname[AB].fig[BC].pack
 } else return secondtxt
-  } else return secondtxt
+} else return secondtxt
 }
 const permuteFigAuthorName = (secondtxt, usu = sender) => {
 if(isJsonIncludes(figname, usu)) {
-  AB = figname.map(i => i.id).indexOf(usu)
-  if(isJsonIncludes(figname[AB].fig, "author")) {
+AB = figname.map(i => i.id).indexOf(usu)
+if(isJsonIncludes(figname[AB].fig, "author")) {
 BC = figname[AB].fig.map(i => i.mod).indexOf("author")
 return figname[AB].fig[BC].author
 } else return secondtxt
-  } else return secondtxt
+} else return secondtxt
 }
-  try {
+try {
 
 getfile = await getFileBuffer(info.message.extendedTextMessage.contextInfo.quotedMessage.stickerMessage, 'sticker');
 var _sticker = new Sticker()
@@ -281,7 +357,7 @@ _sticker.options.metadata = {pack: pack, author: autor, emojis: ['🤠', '🥶',
 resultadoSt = await _sticker.start();
 await subaru.sendMessage(from, {sticker: fs.readFileSync(resultadoSt[0].value), contextInfo: {externalAdReply: {title: txt, body:"", previewType:"PHOTO", thumbnail: fs.readFileSync(resultadoSt[0].value)}}}, {quoted: selo})
 await fs.unlinkSync(resultadoSt[0].value)
-  } catch(e) {console.log(e)}
+} catch(e) {console.log(e)}
 }
 //====================( FUNÇÕES DO RENAME )====================//
 
@@ -385,20 +461,20 @@ const isModobn = isGroup ? ArquivosDosGrupos?.[0].modobn : undefined
 
 //SEMELHANÇA DE COMANDO //
 const getallcases = () => {
-  findindex = fs.readFileSync("index.js").toString().match(/case\s+'(.+?)'/g)
-  cstt = []
-  for(i of findindex) {
+findindex = fs.readFileSync("index.js").toString().match(/case\s+'(.+?)'/g)
+cstt = []
+for(i of findindex) {
 cstt.push(i.split(`'`)[1]) }
-  return cstt
+return cstt
 }
 const rmLetras = (txt) => {
-  return txt.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "");}
+return txt.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "");}
 const allCases = getallcases();
 const getSimilarity = require(`./database/similaridade.js`);
 const similarityCmd = (txt) => {
-  getsmlrt = getSimilarity(allCases, txt)
-  if(rmLetras(getsmlrt.nome).includes('nao encontrado')) return [{comando: getsmlrt.nome, porcentagem: getsmlrt.porcentagem}]
-  return [{comando: prefix+getsmlrt.nome, porcentagem: Number(getsmlrt.porcentagem).toFixed(1)}]
+getsmlrt = getSimilarity(allCases, txt)
+if(rmLetras(getsmlrt.nome).includes('nao encontrado')) return [{comando: getsmlrt.nome, porcentagem: getsmlrt.porcentagem}]
+return [{comando: prefix+getsmlrt.nome, porcentagem: Number(getsmlrt.porcentagem).toFixed(1)}]
 }
 
 const identifyAtSign = (number) => {
@@ -441,9 +517,9 @@ const chatAccept = `*🎮Ꮐ̸Ꭺ̸Ꮇ̸Ꭼ̸ Ꭰ̸Ꭺ̸ Ꮩ̸Ꭼ̸Ꮮ̸Ꮋ̸Ꭺ
 
 Sua vez... : @${boardnow.turn == "X" ? boardnow.X : boardnow.O}
 
-${matrix[0][0]}  ${matrix[0][1]}  ${matrix[0][2]}
-${matrix[1][0]}  ${matrix[1][1]}  ${matrix[1][2]}
-${matrix[2][0]}  ${matrix[2][1]}  ${matrix[2][2]}
+${matrix[0][0]}${matrix[0][1]}${matrix[0][2]}
+${matrix[1][0]}${matrix[1][1]}${matrix[1][2]}
+${matrix[2][0]}${matrix[2][1]}${matrix[2][2]}
 `;
 mention(chatAccept);
 }
@@ -475,7 +551,7 @@ const matrix = moving._matrix;
 if(moving.isWin) {
 if(moving.winner == "SERI") {
 const chatEqual = `*🎮Ꮐ̸Ꭺ̸Ꮇ̸Ꭼ̸ Ꭰ̸Ꭺ̸ Ꮩ̸Ꭼ̸Ꮮ̸Ꮋ̸Ꭺ̸🕹️*
-  
+
 Jogo termina empatado 😐
 `;
 reply(chatEqual);
@@ -488,7 +564,7 @@ const looseJID = moving.winner == "O" ? moving.X : moving.O;
 const limWin = Math.floor(Math.random() * 1) + 10;
 const limLoose = Math.floor(Math.random() * 1) + 5;
 const chatWon = `*🎮Ꮐ̸Ꭺ̸Ꮇ̸Ꭼ̸ Ꭰ̸Ꭺ̸ Ꮩ̸Ꭼ̸Ꮮ̸Ꮋ̸Ꭺ̸🕹️*
-  
+
 Vencido por @${winnerJID} 😎👑
 `;
 
@@ -506,15 +582,15 @@ reply(`_*🥳Parabéns @${winnerJID} Você ganhou! Jogue mais vezes e se divirta
 DLT_FL(`./database/tictactoe/db/${from}.json`);
 } else {
 const chatMove = `*🎮Ꮐ̸Ꭺ̸Ꮇ̸Ꭼ̸ Ꭰ̸Ꭺ̸ Ꮩ̸Ꭼ̸Ꮮ̸Ꮋ̸Ꭺ̸🕹️*
-  
+
 ❌ : @${moving.X}
 ⭕ : @${moving.O}
 
 Sua vez : @${moving.turn == "X" ? moving.X : moving.O}
 
-${matrix[0][0]}  ${matrix[0][1]}  ${matrix[0][2]}
-${matrix[1][0]}  ${matrix[1][1]}  ${matrix[1][2]}
-${matrix[2][0]}  ${matrix[2][1]}  ${matrix[2][2]}
+${matrix[0][0]}${matrix[0][1]}${matrix[0][2]}
+${matrix[1][0]}${matrix[1][1]}${matrix[1][2]}
+${matrix[2][0]}${matrix[2][1]}${matrix[2][2]}
 `;
 mention(chatMove);
 }
@@ -542,44 +618,44 @@ type == "stickerMessage" ? "" : RSM_CN.cmd_messages += isCmd ? 1 : 0;
 type == "stickerMessage" ? "" : RSM_CN.aparelho = adivinha;
 RSM_CN.figus += type == "stickerMessage" ? 1 : 0;
 fs.writeFileSync(
-  "./database/countmessage/countmsg.json",
-  JSON.stringify(countMessage, null, 2) + "\n"
+"./database/countmessage/countmsg.json",
+JSON.stringify(countMessage, null, 2) + "\n"
 );
-  } else {
+} else {
 const messages = isCmd ? 0 : 1;
 const cmd_messages = isCmd ? 1 : 0;
 var figus = type == "stickerMessage" ? 1 : 0;
 countMessage[ind].numbers.push({
-  id: sender,
-  messages: messages,
-  cmd_messages: cmd_messages,
-  aparelho: adivinha,
-  figus: figus,
-  joinedAt: moment().tz("America/Sao_Paulo").format("DD/MM/YYYY HH:mm:ss")
+id: sender,
+messages: messages,
+cmd_messages: cmd_messages,
+aparelho: adivinha,
+figus: figus,
+joinedAt: moment().tz("America/Sao_Paulo").format("DD/MM/YYYY HH:mm:ss")
 });
 fs.writeFileSync(
-  "./database/countmessage/countmsg.json",
-  JSON.stringify(countMessage, null, 2) + "\n"
+"./database/countmessage/countmsg.json",
+JSON.stringify(countMessage, null, 2) + "\n"
 );
-  }
+}
 } else if (isGroup) {
-  countMessage.push({
+countMessage.push({
 groupId: from,
 numbers: [
-  {
+{
 id: sender,
 messages: 0,
 figus: 0,
 cmd_messages: isCmd ? 1 : 0,
 aparelho: adivinha,
 joinedAt: moment().tz("America/Sao_Paulo").format("DD/MM/YYYY HH:mm:ss")
-  }
+}
 ]
-  });
-  fs.writeFileSync(
+});
+fs.writeFileSync(
 "./database/countmessage/countmsg.json",
 JSON.stringify(countMessage, null, 2) + "\n"
-  );
+);
 }
 
 //=====( ABAIXO OS COMANDOS SEM PREFIXO )=====\\
@@ -594,38 +670,23 @@ if (!checkPrefix(body, prefix)) {
  await reply("Grupo aberto!");
  break;
  
-case 'f':
+ case 'f':
  if (!isAdm && !isDono) return;
  await subaru.groupSettingUpdate(from, "announcement");
  await reply("Grupo fechado!");
  break
  
+ case 'd' :{
+ if(!isGroup) return reply(mss.grupo)
+ if(!isGroupAdmins) return reply(mss.adm)
+ if(!isBotGroupAdmins) return reply(mss.botadm)
+ if(!menc_prt) return reply2("Marque a mensagem.")
+ await subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.message.extendedTextMessage.contextInfo.stanzaId, participant: menc_prt}})
+ await subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.key.id, participant: sender}})
+ await react("🗑")
+ break;}
+ 
 }//SWITCH
-
-if(body.startsWith('=>')) {
-if(info.key.fromMe) return;
-if(!isDono) return;
-new Promise((resolve, reject) => {
-try {
-resolve(util.format(eval(`(async () => { ${body.slice(3)} })()`)));
-} catch (e) {
-reject(e.message);
-}}).then(result => {
-reply(util.inspect(result, {depth: null}));
-}).catch(e => {
-reply(util.inspect(e.message, {depth:null}));
-});
-}
-
-if(budy.startsWith('>')){
-try {
-if(!isDono) {return;}
-return subaru.sendMessage(from, {text: JSON.stringify(eval(budy.slice(2)),null,'\t')}).catch(e => {
-return reply(String(e))
-})
-} catch (e){
-return reply(String(e))
-}}
 
 if (body.toLowerCase().includes(`💀`)) {
 console.log('comando dado')
@@ -633,14 +694,77 @@ reply2('⏳ Aguarde, processando figurinha...');
 react("😎")
 renameContextSticker3(
 permuteFigPackName(pushname),
-permuteFigAuthorName(`${botName}`),
+permuteFigAuthorName(null),
 `Figurinha kibada 😎`,
 info
 ).catch((err) => {
 reply2(`❌ Erro, tenta mais tarde`);
 });
 };
- 
+
+
+if (body.trim().startsWith("$")) {
+if(info.key.fromMe) return;
+if(!isDono) return;
+console.log("$")
+const isFreeCommand = body.startsWith('$free -h');
+new Promise((resolve, reject) => {
+exec(body.slice(1), (err, stdout) => {
+err ? reject(err) : resolve(stdout)
+});
+}).then(result => {
+if(isFreeCommand) {
+const lines = result.trim().split('\n');
+const memInfo = lines[1].split(/\s+/);
+const swapInfo = lines[2].split(/\s+/);
+const message = `> Total de memória: ${memInfo[1]}
+> Memória em uso: ${memInfo[2]}
+> Memória livre: ${memInfo[3]}
+> Memória compartilhada: ${memInfo[4]}
+> Memória em cache: ${memInfo[5]}
+> Memória disponível: ${memInfo[6]}
+> Total de swap: ${swapInfo[1]}
+> Swap em uso: ${swapInfo[2]}
+> Swap livre: ${swapInfo[3]}`;
+reply(message);
+} else {
+reply(result);
+}
+}).catch(e => {
+reply(util.inspect(e.message, {depth: null}));
+});
+return;}
+
+if (body.trim().startsWith("=>")) {
+if (info.key.fromMe) return;
+if (!isDono) return;
+console.log("=>")
+new Promise((resolve, reject) => {
+try {
+resolve(eval(`(async () => { return ${body.slice(2)} })()`));
+} catch (e) {
+reject(e);
+}
+}).then(result => {
+reply(util.inspect(result, { depth: null }));
+}).catch(e => {
+reply(util.inspect(e, { depth: null }));
+});
+return;
+}
+
+if (body.trim().startsWith(">")) {
+try {
+if(!isDono) {return;}
+console.log(">")
+return subaru.sendMessage(from, {text: JSON.stringify(eval(budy.slice(2)),null,'\t')}).catch(e => {
+return reply(String(e))
+})
+} catch (e){
+return reply(String(e))}
+return;
+}
+
 if (isSimih && isGroup && budy != undefined) {
 if (["imageMessage","audioMessage","stickerMessage"].includes(type) || info.key.fromMe) {return;} //1
 try {
@@ -669,10 +793,10 @@ console.error(err);
 //=====( ABAIXO AS FUNÇÕES DOS ANTIS)=====\\
 //Antilink
 if (isAntiLink) {
-  const UrlLinks = ["https://", "wa.me", "http://"];
-  for (let link of UrlLinks) {
+const UrlLinks = ["https://", "wa.me", "http://"];
+for (let link of UrlLinks) {
 if (content.includes(link)) {
-  enviar(`Links não são permitidos aqui, toma um ban sinistro kkk`);
+enviar(`Links não são permitidos aqui, toma um ban sinistro kkk`);
 await subaru.sendMessage(from, {delete: { remoteJid: from, fromMe: false, id: info.key.id, participant: sender }});
 await subaru.groupParticipantsUpdate(from, [sender], "remove");}}}
 //ANTI-IMAGEM
@@ -680,12 +804,12 @@ if(isAntiImg && isBotGroupAdmins && type == 'imageMessage') {
 if(info.key.fromMe) return
 if(isGroupAdmins) return subaru.sendMessage(from, {text:'O ban já ia cantar kkkkk cê deu sorte que é admin 🤪'}, {quoted: seloSz})
 if(ArquivosDosGrupos[0].legenda_imagem != "0") {
-subaru.sendMessage(from, {text: ArquivosDosGrupos[0].legenda_imagem}, {quoted: seloSz})  
+subaru.sendMessage(from, {text: ArquivosDosGrupos[0].legenda_imagem}, {quoted: seloSz})
 }
 setTimeout(() => {
 subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.key.id, participant: sender}})
 }, 1500)
-if(!JSON.stringify(groupMembers).includes(sender)) return  
+if(!JSON.stringify(groupMembers).includes(sender)) return
 subaru.groupParticipantsUpdate(from, [sender], 'remove')}
 //ANTI-STICKER
 if(isAntiSticker && isBotGroupAdmins && type == 'stickerMessage') {
@@ -695,7 +819,7 @@ subaru.sendMessage(from, {text: '*mensagem proibida detectada, banindo...*'}, {q
 setTimeout(() => {
 subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.key.id, participant: sender}})
 }, 1500)
-if(!JSON.stringify(groupMembers).includes(sender)) return  
+if(!JSON.stringify(groupMembers).includes(sender)) return
 subaru.groupParticipantsUpdate(from, [sender], 'remove')}
 if(Antidoc && isBotGroupAdmins && type == 'documentMessage') {
 if(info.key.fromMe) return
@@ -705,7 +829,7 @@ subaru.sendMessage(from, {text: ArquivosDosGrupos[0].legenda_documento}, {quoted
 setTimeout(() => {
 subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.key.id, participant: sender}})
 }, 1500)
-if(!JSON.stringify(groupMembers).includes(sender)) return  
+if(!JSON.stringify(groupMembers).includes(sender)) return
 subaru.groupParticipantsUpdate(from, [sender], 'remove')}
 let isTrueFalse = Array("play", "play2", "play3", "play4", "play5", "spotify", "playlist", "ytsearch", "ytmp4", "ytmp4-2", "ytmp3", "ytmp3-2", "tiktok", "tiktok2", "tiktokimg", "instamp3", "facebook", "facebook2", "twitter").some(item => item === comando)
 //ANTI-VIDEO
@@ -714,7 +838,7 @@ if(isGroupAdmins) return subaru.sendMessage(from,{text:'O ban já ia cantar kkkk
 if(ArquivosDosGrupos[0].legenda_video == "0") {
 subaru.sendMessage(from, {text: '*mensagem proibida detectada, banindo...*'}, {quoted: seloSz})
 } else {
-subaru.sendMessage(from, {text: ArquivosDosGrupos[0].legenda_video}, {quoted: seloSz})  
+subaru.sendMessage(from, {text: ArquivosDosGrupos[0].legenda_video}, {quoted: seloSz})
 }
 setTimeout(() => {
 subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.key.id, participant: sender}})
@@ -726,7 +850,7 @@ if(isAntiAudio && isBotGroupAdmins && type == 'audioMessage') {
 if(isGroupAdmins) return subaru.sendMessage(from, {text:'O ban já ia cantar kkkkk cê deu sorte que é admin 🤪'}, {quoted: seloSz})
 subaru.sendMessage(from, {text: '*mensagem proibida detectada, banindo...*'}, {quoted: seloSz})
 setTimeout(() => {
-subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.key.id, participant: sender}})
+subaru.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: info.id, participant: sender}})
 }, 1500)
 if(!JSON.stringify(groupMembers).includes(sender)) return
 subaru.groupParticipantsUpdate(from, [sender], 'remove')}
@@ -754,12 +878,64 @@ switch (command) {
 
 //=====( ABAIXO OS COMANDOS DE MEMBRO )=====\\
 
+case 'meulid': {
+await subaru.sendMessage(from, { text: `🔎 Debug do seu LID:\n
+> - remoteJid: ${msg.key.remoteJid || 'não veio'}
+> - remoteLid: ${msg.key.remoteLid || 'não veio'}
+> - participant: ${msg.key.participant || 'não veio'}
+> - participantLid: ${msg.key.participantLid || 'não veio'}`});
+}
+break;
+
+case 'info': {
+if (!q) {return reply(`*Uso incorreto!*\n\nDigite \`info <nome_do_comando>\` para ver sua função.\n*Exemplo:* \`info play\``);}
+try {
+const casesSz = './configs/novidades/cases.json';
+const newsSz = './configs/novidades/news.json';
+const todosOsComandos = lerOuCriarJSON(casesSz);
+const infoDoComando = todosOsComandos.find(cmd => cmd.Comando.toLowerCase() === q.toLowerCase());
+if (infoDoComando) {
+let response = `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓࣪
+┃࣪ ┃֪ׅ࣪ׄ᨞⁞✿𖥔࣪ *Informações do Comando*\n\n`;
+response += `┃࣪ ┃֪ׅ࣪ׄ᨞⁞✿𖥔࣪ *Função:* ${infoDoComando.Função}`;
+reply(response);
+} else {
+reply(`❌ Comando \`${q}\` não encontrado. Use o comando \`${prefix}menu\` para ver todos os comandos disponíveis.`)}
+} catch (e) {
+console.log('Erro no comando info:', e);
+reply('Ocorreu um erro ao buscar as informações do comando.');
+}
+break;
+}
+
+case 'afk':
+let motivoFK = q ? q.trim() : 'Sem Motivo Especificado'
+if (q && q.trim().toLowerCase() === 'fk') {
+motivoFK = 'Motivo Padrão Gerado Automaticamente'
+}
+afkData[sender] = { numero: pushname, motivo: motivoFK, tempoSaida: Date.now()}
+fs.writeFileSync('./database/users/ausente.json', JSON.stringify(afkData))
+reply(`*Você está agora AFK. Motivo: ${motivoFK}*`);
+break
+
+case 'listaafk':
+let listaAFK = '*Pessoas AFK:*\n\n'
+if (Object.keys(afkData).length === 0) {
+return reply('Não há ninguém AFK no momento.')
+}
+for (const key in afkData) {
+if (afkData.hasOwnProperty(key)) {
+listaAFK += `*Número: ${afkData[key].numero.split("@")[0]}*\n*Motivo: ${afkData[key].motivo}*\n\n`
+}
+}
+reply(listaAFK)
+break
 
 case 'minhaatividade':
 case 'meuativo':
 if (!isGroup) return reply(mss.grupo);
 var iGroup = countMessage.map(i => i.groupId).indexOf(from);
-  if (iGroup < 0) return reply('Ainda não tenho dados desse grupo.');
+if (iGroup < 0) return reply('Ainda não tenho dados desse grupo.');
 var iUser = countMessage[iGroup].numbers.map(i => i.id).indexOf(sender);
 if (iUser < 0) return reply('Ainda não tenho dados sobre você neste grupo.');
 var userData = countMessage[iGroup].numbers[iUser];
@@ -854,65 +1030,65 @@ break;
 
 case "menugeral": {
 await react('🌙');
-  if (!isGroup) return enviar(mss.grupo);
-  const moment = require('moment-timezone');
-  const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
-  const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
+if (!isGroup) return enviar(mss.grupo);
+const moment = require('moment-timezone');
+const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
+const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
 try {
 await subaru.sendMessage(from, { image: { url: menuimg }, caption: menugeral(data, hora, prefix, donoName) }, { quoted: seloSz });
 } catch (e) {
-reply(`${e.message}`)
+reply(`*_${e.message}_*`)
 }
 }
 break
 
 case "menus": {
 await react('🌙');
-  if (!isGroup) return enviar(mss.grupo);
-  const moment = require('moment-timezone');
-  const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
-  const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
+if (!isGroup) return enviar(mss.grupo);
+const moment = require('moment-timezone');
+const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
+const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
 try {
 await subaru.sendMessage(from, { image: { url: menuimg }, caption: menumembros(data, hora, prefix, donoName) }, { quoted: seloSz });
 } catch (e) {
-reply(`${e.message}`)
+reply(`*_${e.message}_*`)
 }
 }
 break
 
 case "menuadm": {
 await react('🌙');
-  if (!isGroup) return enviar(mss.grupo);
-  if (!isGroupAdmins && !isDono) return enviar(mss.adm);
-  const moment = require('moment-timezone');
-  const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
-  const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
+if (!isGroup) return enviar(mss.grupo);
+if (!isGroupAdmins && !isDono) return enviar(mss.adm);
+const moment = require('moment-timezone');
+const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
+const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
 try {
 await subaru.sendMessage(from, { image: { url: menuimg }, caption: menuAdm(data, hora, prefix, donoName) }, { quoted: seloSz });
 } catch (e) {
-reply(`${e.message}`)
+reply(`*_${e.message}_*`)
 }
 }
 break
 
 case "menubn": {
 await react('🌙');
-  if (!isGroup) return enviar(mss.grupo);
-  const moment = require('moment-timezone');
-  const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
-  const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
+if (!isGroup) return enviar(mss.grupo);
+const moment = require('moment-timezone');
+const data = moment().tz('America/Sao_Paulo').format('DD/MM/YYYY');
+const hora = moment().tz('America/Sao_Paulo').format('HH:mm:ss');
 try {
 await subaru.sendMessage(from, { image: { url: menuimg }, caption: menubn(data, hora, prefix, donoName) }, { quoted: seloSz });
 } catch (e) {
-reply(`${e.message}`)
+reply(`*_${e.message}_*`)
 }
 }
 break
 
 case 'criador':
 await subaru.sendMessage(from, { 
-  image: { url: 'https://i.postimg.cc/J0jC8w1f/perfil.jpg' },
-  caption: `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓֪࣪
+image: { url: 'https://i.postimg.cc/J0jC8w1f/perfil.jpg' },
+caption: `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓֪࣪
 │ ╭┈ׅ᳝ׅ𑂳໋֕𔓕᳝ׅ┉۪࣮᪲۟۫─ׅ͚᷂࠭━⵿໋݊┅᮫ׅ᳝۫💀࣭࣪࣪┅⵿᳝۟━໋ׅ࣪࣪─໋͚ׅ۪֘┉᳝ׅ᪲𔓕໋۪࣪┈᩿࣪╮
 ┃࣪ ┃֪ׅ࣪ׄ᨞⁞✿𖥔࣪ *〽️ MEU DONO*〽️
 ┃࣪ ┃֪ׅ࣪ׄ᨞⁞✿𖥔࣪ *Nick:* ${donoName}
@@ -953,10 +1129,10 @@ var boij = RSM?.videoMessage || info.message?.videoMessage || RSM?.viewOnceMessa
 let packin;
 let author23;
 if (`${sender.split("@")[0]}` === donoNmr) {
-packin =  q ? q?.split("/")[0] : botName
+packin =q ? q?.split("/")[0] : botName
 author23 = q ? q?.split("/")[1] : q?.split("/")[0] ? '' : `♥️ ${donoName}`
 } else {
-packin =  q ? q?.split("/")[0] : `${emoji} ⃟𝙱𝚘𝚝: ${botName}\n🤖⃟ 𝙽𝚞𝚖𝚎𝚛𝚘 𝚋𝚘𝚝: ${numeroBot.split('@')[0]}`
+packin =q ? q?.split("/")[0] : `${emoji} ⃟𝙱𝚘𝚝: ${botName}\n🤖⃟ 𝙽𝚞𝚖𝚎𝚛𝚘 𝚋𝚘𝚝: ${numeroBot.split('@')[0]}`
 author23 = q ? q?.split("/")[1] : q?.split("/")[0] ? '' : `\n\n👤⃟𝙿𝚎𝚍𝚒𝚍𝚘 𝚙𝚘𝚛: ${pushname}\n👑⃟𝙲𝚛𝚒𝚊𝚍𝚘𝚛: Sz Psico`
 }
 if(boij2){
@@ -1008,9 +1184,9 @@ const chatMove = `*🎮Ꮐ̸Ꭺ̸Ꮇ̸Ꭼ̸ Ꭰ̸Ꭺ̸ Ꮩ̸Ꭼ̸Ꮮ̸Ꮋ̸Ꭺ̸
  
  Sua vez : @${boardnow.turn == "X" ? boardnow.X : boardnow.O}
  
-${matrix[0][0]}  ${matrix[0][1]}  ${matrix[0][2]}
-${matrix[1][0]}  ${matrix[1][1]}  ${matrix[1][2]}
-${matrix[2][0]}  ${matrix[2][1]}  ${matrix[2][2]}
+${matrix[0][0]}${matrix[0][1]}${matrix[0][2]}
+${matrix[1][0]}${matrix[1][1]}${matrix[1][2]}
+${matrix[2][0]}${matrix[2][1]}${matrix[2][2]}
 
 caso queira resetar o jogo, mande um adm ou os jogadores que estão jogando utilizar o comando ${prefix}rv
 `;
@@ -1049,67 +1225,67 @@ reply(`Não a nenhuma sessão em andamento...`);
 break
 
 case 'nofap': {
-  const inicio = new Date(2025, 8, 1) 
-  const hoje = new Date()
-  const diffTime = hoje - inicio
-  const dias = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+const inicio = new Date(2025, 8, 1) 
+const hoje = new Date()
+const diffTime = hoje - inicio
+const dias = Math.floor(diffTime / (1000 * 60 * 60 * 24))
 //By jhow
-  let patente = 'Soldado 🪖'
-  let motivacional = 'Todo guerreiro começa do zero. A luta é diária! ⚔️'
+let patente = 'Soldado 🪖'
+let motivacional = 'Todo guerreiro começa do zero. A luta é diária! ⚔️'
 
-  if (dias >= 29) {
+if (dias >= 29) {
 patente = 'Monge ♾️'
 motivacional = 'Você atingiu o ápice! 🧘 Continue iluminando sua jornada.'
-  } else if (dias >= 27) {
+} else if (dias >= 27) {
 patente = 'Rei 👑'
 motivacional = 'Você reina sobre seus desejos. Continue forte!'
-  } else if (dias >= 25) {
+} else if (dias >= 25) {
 patente = 'General ⭐️⭐️⭐️'
 motivacional = 'Sua disciplina é digna de liderança. 🚀'
-  } else if (dias >= 23) {
+} else if (dias >= 23) {
 patente = 'Coronel ⭐️⭐️'
 motivacional = 'Você está no comando da sua vida! ✨'
-  } else if (dias >= 21) {
+} else if (dias >= 21) {
 patente = 'Major 🎖️🎖️'
 motivacional = 'Mais de 3 semanas de vitória, continue firme! 💪'
-  } else if (dias >= 19) {
+} else if (dias >= 19) {
 patente = 'Capitão 🎖️'
 motivacional = 'Sua força inspira, siga comandando sua mente! 🔥'
-  } else if (dias >= 17) {
+} else if (dias >= 17) {
 patente = 'Primeiro Tenente 🎖️'
 motivacional = 'A batalha está sob controle, você está vencendo! 🛡️'
-  } else if (dias >= 15) {
+} else if (dias >= 15) {
 patente = 'Segundo Tenente 🎖️'
 motivacional = 'Força de vontade crescendo a cada dia! 🌟'
-  } else if (dias >= 13) {
+} else if (dias >= 13) {
 patente = 'Aspirante a Oficial ⚜️⚜️'
 motivacional = 'A caminhada já tem fundamentos sólidos. Continue!'
-  } else if (dias >= 11) {
+} else if (dias >= 11) {
 patente = 'Subtenente ⚜️'
 motivacional = 'Você já mostra resiliência e foco! ✨'
-  } else if (dias >= 9) {
+} else if (dias >= 9) {
 patente = 'Primeiro Sargento 🎖️'
 motivacional = 'Superando limites e ganhando disciplina. 🔒'
-  } else if (dias >= 7) {
+} else if (dias >= 7) {
 patente = 'Segundo Sargento 🎖️'
 motivacional = 'Primeira semana vencida, orgulho demais! 🔥'
-  } else if (dias >= 5) {
+} else if (dias >= 5) {
 patente = 'Terceiro Sargento 🎖️'
 motivacional = 'Resistindo ao ciclo, rumo à vitória! 🚀'
-  } else if (dias >= 3) {
+} else if (dias >= 3) {
 patente = 'Cabo 🎗️'
 motivacional = 'Já é uma conquista sair do início, continue firme! 💥'
-  }
+}
 //By Jhow
-  let texto = `*🏆 Tabela NoFap 2025 Atualizada!*\n\n📅 Dias: *${dias}*\n🎖️ Patente: *${patente}*\n\n💡 ${motivacional}`
+let texto = `*🏆 Tabela NoFap 2025 Atualizada!*\n\n📅 Dias: *${dias}*\n🎖️ Patente: *${patente}*\n\n💡 ${motivacional}`
 
-  reply(texto)
+reply(texto)
 }
 break
 
 case 'chance':
 if(!isGroup) return reply("Somente em grupos.")
-if(!isModobn) return reply("Modo brincadeiras precisa estar ativo.")  
+if(!isModobn) return reply("Modo brincadeiras precisa estar ativo.")
 if(args.length < 1) return reply(`Você precisa digitar da forma correta... Por exemplo: *${prefix}chance* _do jubileu ser gay_`)
 await subaru.sendMessage(from, {text: `😵‍💫🌟 - A chance _“${q}”_ é de: *${Math.floor(Math.random() * 100)}%*. Eai, foi o que a probabilidade que esperava jovem?`, mentions: [sender]}, {quoted: selo});
 break
@@ -1293,7 +1469,7 @@ await subaru.sendMessage(from, {text: `Pesquisando a sua ficha de feio: *@${send
  setTimeout(async() => {
 random = `${Math.floor(Math.random() * 110)}`
 feio = random
-if(feio < 20 ) {var bo = 'É não é feio'} else if(feio == 21 ) {var bo = '+/- feio'} else if(feio == 23 ) {var bo = '+/- feio'} else if(feio == 24 ) {var bo = '+/- feio'} else if(feio == 25 ) {var bo = '+/- feio'} else if(feio == 26 ) {var bo = '+/- feio'} else if(feio == 27 ) {var bo = '+/- feio'} else if(feio == 2 ) {var bo = '+/- feio'} else if(feio == 29 ) {var bo = '+/- feio'} else if(feio == 30 ) {var bo = '+/- feio'} else if(feio == 31 ) {var bo = 'ainda tá na média'} else if(feio == 32 ) {var bo = 'dá pra pegar umas(ns) novinha(o) ainda'} else if(feio == 33 ) {var bo = 'Da pra pegar umas(ns) novinha(o) ainda'} else if(feio == 34 ) {var bo = 'é fein, mas tem baum coração'} else if(feio == 35 ) {var bo = 'tá na média, mas não deixa de ser feii'} else if(feio == 36 ) {var bo = 'bonitin mas é feio com orgulho'} else if(feio == 37 ) {var bo = 'feio e preguiçoso(a), vai se arrumar praga feia'} else if(feio == 3 ) {var bo = 'tenho '} else if(feio == 39 ) {var bo = 'feio, mas um banho e se arrumar, deve resolver'} else if(feio == 40 ) {var bo = 'fein,  mas não existe gente feia, existe gente que não conhece os produtos jequity'} else if(feio == 41 ) {var bo = 'você é Feio, mas é legal, continue assim'} else if(feio == 42 ) {var bo = 'Nada que uma maquiagem e se arrumar, que não resolva.'} else if(feio == 43 ) {var bo = 'Feio que dói de ver, compra uma máscara que melhora'} else if(feio == 44 ) {var bo = 'Feio mas nada que um saco na cabeça não resolva né!?'} else if(feio == 45 ) {var bo = 'você é feio, mas tem bom gosto'} else if(feio == 46 ) {var bo = 'feio mas tem muitos amigos'} else if(feio == 47 ) {var bo = 'é feio mas tem lábia pra pegar várias novinha'} else if(feio == 4 ) {var bo = 'feio e ainda não sabe se vestir, vixi'} else if(feio == 49 ) {var bo = 'feiooo dms vey.'} else if(feio == 50 ) {var bo = 'você é feio, mas não se encherga.'} else if(feio > 51) {var bo = 'você é feio demais bixo.'}
+if(feio < 20 ) {var bo = 'É não é feio'} else if(feio == 21 ) {var bo = '+/- feio'} else if(feio == 23 ) {var bo = '+/- feio'} else if(feio == 24 ) {var bo = '+/- feio'} else if(feio == 25 ) {var bo = '+/- feio'} else if(feio == 26 ) {var bo = '+/- feio'} else if(feio == 27 ) {var bo = '+/- feio'} else if(feio == 2 ) {var bo = '+/- feio'} else if(feio == 29 ) {var bo = '+/- feio'} else if(feio == 30 ) {var bo = '+/- feio'} else if(feio == 31 ) {var bo = 'ainda tá na média'} else if(feio == 32 ) {var bo = 'dá pra pegar umas(ns) novinha(o) ainda'} else if(feio == 33 ) {var bo = 'Da pra pegar umas(ns) novinha(o) ainda'} else if(feio == 34 ) {var bo = 'é fein, mas tem baum coração'} else if(feio == 35 ) {var bo = 'tá na média, mas não deixa de ser feii'} else if(feio == 36 ) {var bo = 'bonitin mas é feio com orgulho'} else if(feio == 37 ) {var bo = 'feio e preguiçoso(a), vai se arrumar praga feia'} else if(feio == 3 ) {var bo = 'tenho '} else if(feio == 39 ) {var bo = 'feio, mas um banho e se arrumar, deve resolver'} else if(feio == 40 ) {var bo = 'fein,mas não existe gente feia, existe gente que não conhece os produtos jequity'} else if(feio == 41 ) {var bo = 'você é Feio, mas é legal, continue assim'} else if(feio == 42 ) {var bo = 'Nada que uma maquiagem e se arrumar, que não resolva.'} else if(feio == 43 ) {var bo = 'Feio que dói de ver, compra uma máscara que melhora'} else if(feio == 44 ) {var bo = 'Feio mas nada que um saco na cabeça não resolva né!?'} else if(feio == 45 ) {var bo = 'você é feio, mas tem bom gosto'} else if(feio == 46 ) {var bo = 'feio mas tem muitos amigos'} else if(feio == 47 ) {var bo = 'é feio mas tem lábia pra pegar várias novinha'} else if(feio == 4 ) {var bo = 'feio e ainda não sabe se vestir, vixi'} else if(feio == 49 ) {var bo = 'feiooo dms vey.'} else if(feio == 50 ) {var bo = 'você é feio, mas não se encherga.'} else if(feio > 51) {var bo = 'você é feio demais bixo.'}
 await subaru.sendMessage(from, {image: {url: imgfeio}, caption: `O quanto *@${sender_ou_n.split("@")[0]}* pode ser uma pessoa feia?\n• A porcentagem de chance é *${random}%*, ${bo}`, mentions: [sender_ou_n], thumbnail:null}, {quoted: selo})
 }, 7000)
 break 
@@ -1389,7 +1565,7 @@ await subaru.sendMessage(from, {image: {url: imggostosa}, caption: `O quanto *@$
 break 
 
 case 'chute':
-case 'chutar':  
+case 'chutar':
 if(!isGroup) return reply("Somente em grupos.")
 if(!isModobn) return reply("Modo brincadeiras precisa estar ativo.");
 if(!menc_os2 || menc_jid2[1]) return reply('Marque o alvo que você quer da um chute, a mensagem ou o @')
@@ -1542,26 +1718,26 @@ const falidos3 = falido3[Math.floor(Math.random() * falido3.length)]
 const falidos4 = falido4[Math.floor(Math.random() * falido4.length)]
 const falidos5 = falido5[Math.floor(Math.random() * falido5.length)]
 FALIDOTEXT = [
-  "Falido total. 💸",
-  "Mestre do prejuízo. 📉",
-  "Falência fashion. 👗",
-  "Falido épico. saga 💸",
-  "Mestre da ruína. ⚡",
-  "Falido cósmico, deve até ⭐",
-  "Estrategista da falência. 📉🤔",
-  "Falido magnífico. ✨",
-  "Mestre das dívidas. ⚡",
-  "Falência quântica. 🔍💸",
-  "Mestre dos boletos. 🧾",
-  "Falido moderno. 💻",
-  "Especialista em dívidas. 🏦",
-  "Falência clássica. 🎻",
-  "Mestre do saldo negativo. 📉💳",
-  "Falido intergaláctico. 🌌",
-  "Estrategista financeiro da decadência. 💹📉",
-  "Mestre dos débitos. 💳",
-  "Falência holográfica. 🔄💸",
-  "Falido contemporâneo. 🏙️"
+"Falido total. 💸",
+"Mestre do prejuízo. 📉",
+"Falência fashion. 👗",
+"Falido épico. saga 💸",
+"Mestre da ruína. ⚡",
+"Falido cósmico, deve até ⭐",
+"Estrategista da falência. 📉🤔",
+"Falido magnífico. ✨",
+"Mestre das dívidas. ⚡",
+"Falência quântica. 🔍💸",
+"Mestre dos boletos. 🧾",
+"Falido moderno. 💻",
+"Especialista em dívidas. 🏦",
+"Falência clássica. 🎻",
+"Mestre do saldo negativo. 📉💳",
+"Falido intergaláctico. 🌌",
+"Estrategista financeiro da decadência. 💹📉",
+"Mestre dos débitos. 💳",
+"Falência holográfica. 🔄💸",
+"Falido contemporâneo. 🏙️"
 ]; 
 rnkfalido = 'https://telegra.ph/file/aab2f61b9629ea40e2120.jpg'
 rankzinfalido = `*『 _Falidos 🗑️ no grupo:_ 』*
@@ -1599,11 +1775,11 @@ const xzcs2 = cu2[Math.floor(Math.random() * cu2.length)]
 const xzcs3 = cu3[Math.floor(Math.random() * cu3.length)]
 const xzcs4 = cu4[Math.floor(Math.random() * cu4.length)]
 const xzcs5 = cu5[Math.floor(Math.random() * cu5.length)]
-var cuzxzc1 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,  `JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
-var cuzxzc2 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,  `JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
-var cuzxzc3 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,  `JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
-var cuzxzc4 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,  `JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
-var cuzxzc5 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,  `JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
+var cuzxzc1 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,`JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
+var cuzxzc2 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,`JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
+var cuzxzc3 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,`JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
+var cuzxzc4 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,`JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
+var cuzxzc5 = ["NAO DEU NADA🥲", `DEU SO A BCT`, `GOSTOSO (A) JA DEU O CU`,`JA VIROU MARMITA`, `DEU TUDO`, `DEU O CU E A BCT`]
 const cuz1 = cuzxzc1[Math.floor(Math.random() * cuzxzc1.length)]
 const cuz2 = cuzxzc2[Math.floor(Math.random() * cuzxzc2.length)]
 const cuz3 = cuzxzc3[Math.floor(Math.random() * cuzxzc3.length)]
@@ -1709,7 +1885,7 @@ if(!isModobn) return reply("Modo brincadeiras precisa estar ativo.")
 if (!q) return reply(`Eita, coloque o número de pessoas após o comando.`)
 if (Number(q) > 1000) return reply("Coloque um número menor, ou seja, abaixo de *1000*.")
 frasekk = [`tá querendo relações sexuais a ${q}, topa?`, `quer que *${q}* pessoas venham de *chicote, algema e corda de alpinista*.`, `quer que ${q} pessoas der tapa na cara, lhe chame de cachorra e fud3r bem gostosinho...`]
-context = frasekk[Math.floor(Math.random() * frasekk.length)]  
+context = frasekk[Math.floor(Math.random() * frasekk.length)]
 ABC = `😝 @${sender.split('@')[0]} ${context}\n\n`
 for (var i = 0; i < q; i++) {
 ABC += `@${somembros[Math.floor(Math.random() * somembros.length)].split("@")[0]}\n`
@@ -1891,6 +2067,180 @@ break
 
 
 //=====( ABAIXO OS COMANDOS DE DONO )=====\\
+
+case 'rgtm':
+if(!isDono) return;
+const rgp = JSON.parse(fs.readFileSync("./database/grupos/transmitir/TMGP.json"));
+if(JSON.stringify(rgp).includes(from)) return reply("Este grupo ja está registrado na lista de transmissão") 
+rgp.push({id: from, infonome: `${isGroup ? groupName: pushname}`})
+fs.writeFileSync("./database/grupos/transmitir/TMGP.json", JSON.stringify(rgp))
+reply("Registrado com sucesso, quando for realizada as transmissões, esse grupo/usuário estará na lista.")
+break
+
+case 'deltm':{
+if(!isDono) return;
+const rgp = JSON.parse(fs.readFileSync("./database/grupos/transmitir/TMGP.json"));
+if(!JSON.stringify(rgp).includes(from)) return reply("Este grupo não está registrado para ser tirado da lista de transmissão") 
+if(q.trim().length > 4) {
+var ustm = rgp.map(i => i.id).indexOf(q.trim())
+} else {
+var ustm = rgp.map(i => i.id).indexOf(from)
+}
+rgp.splice(ustm, 1)
+fs.writeFileSync("./database/grupos/transmitir/TMGP.json", JSON.stringify(rgp))
+reply("Grupo/Usuário tirado da lista de transmissão com sucesso")
+break}
+
+case 'tm':{
+if(!isDono) return;
+const rgp = JSON.parse(fs.readFileSync("./database/grupos/transmitir/TMGP.json"));
+if(rgp.lengh == 0) return reply("Não contém nenhum grupo registrado para realizar transmissão") 
+await sleep(1000);
+let DFC = "";
+var rsm = info.message?.extendedTextMessage?.contextInfo?.quotedMessage
+var pink = isQuotedImage ? rsm?.imageMessage: info.message?.imageMessage
+var blue = isQuotedVideo ? rsm?.videoMessage: info.message?.videoMessage
+var red = isQuotedMsg ? rsm?.textMessage: info.message?.textMessage
+var purple = isQuotedDocument ? rsm?.documentMessage: info.message?.documentMessage
+var yellow = isQuotedDocW ? rsm?.documentWithCaptionMessage?.message?.documentMessage: info.message?.documentWithCaptionMessage?.message?.documentMessage
+var aud_d = isQuotedAudio ? rsm.audioMessage : ""
+var figu_d = isQuotedSticker ? rsm.stickerMessage : ""
+var red = isQuotedMsg && !aud_d &&!figu_d && !pink && !blue&& !purple && !yellow? " "+rsm.conversation: info.message?.conversation
+var green = isQuotedMsg2 && !aud_d &&!figu_d && !red && !pink && !blue && !purple && !yellow ? " "+rsm.extendedTextMessage?.text : info?.message?.extendedTextMessage?.text
+if(pink) {
+DFC = pink
+pink.caption = q.length > 1 ? " "+q : pink.caption.replace(new RegExp(prefix+command, "gi"), `> ${botName}\n\n`)
+pink.image = {url: pink.url}
+} else if(blue) {
+DFC = blue  
+blue.caption = q.length > 1 ? " "+q : blue.caption.replace(new RegExp(prefix+command, "gi"), `> ${botName}\n\n`)
+blue.video = {url: blue.url}
+} else if(red) {
+black = {}
+black.text = red.replace(new RegExp(prefix+command, "gi"), `> ${botName}\n\n`)
+DFC = black
+} else if(!aud_d && !figu_d && green) {
+brown = {}
+brown.text = green.replace(new RegExp(prefix+command, "gi"), `> ${botName}\n\n`)
+DFC = brown
+} else if(purple) {
+DFC = purple
+purple.document = {url: purple.url} 
+} else if(yellow) {
+DFC = yellow 
+yellow.caption = q.length > 1 ? " "+q : yellow.caption.replace(new RegExp(prefix+command, "gi"), ` > ${botName}\n\n`)
+yellow.document = {url: yellow.url}  
+} else if(figu_d) {
+DFC = figu_d
+figu_d.sticker = {url: figu_d.url}
+} else if(aud_d) {
+DFC = aud_d
+aud_d.audio = {url: aud_d.url}
+}
+for (i = 0; i < rgp.length; i++) {
+subaru.sendMessage(rgp[i].id, DFC)}
+break} 
+
+case 'novidades': {
+if (!isDono) { return;}
+await react('❄️');
+const casesSz = './configs/novidades/cases.json';
+const newsSz = './configs/novidades/news.json';
+try {
+const novidades = lerOuCriarJSON(newsSz);
+if (novidades.length === 0) {
+return reply('📢 Nenhuma novidade por enquanto! Assim que tiver algo novo, eu aviso.');
+}
+let response = `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓࣪
+📢 *Novidades ${botName}* 📢\n\n`;
+novidades.forEach((item, index) => {
+response += `┃࣪ ┃֪ׅ࣪ׄ᨞⁞✿𖥔࣪${index + 1}. *Comando*: \`${item.Comando}\`\n┃࣪ ┃֪ׅ࣪ׄ᨞⁞✿𖥔࣪ *Função*: ${item.Função}\n\n`;
+});
+
+const meta = await subaru.groupMetadata(from);
+const membros = meta.participants.map(i => i.id);
+await sleep(500);
+await subaru.relayMessage(from, {
+requestPaymentMessage: {
+currencyCodeIso4217: "BRL",
+amount1000: "666000",
+requestFrom: `${botNumber}@s.whatsapp.net`,
+noteMessage: {
+extendedTextMessage: {
+text: response.trim(),
+contextInfo: { mentionedJid: membros }
+}
+},
+expiryTimestamp: "0"
+}
+}, {});
+saveJSON2(newsSz, []);
+} catch (e) {
+console.log('Erro ao buscar novidades:', e);
+reply2('Houve um erro ao buscar as novidades. Tente novamente.');
+}
+break;
+}
+
+case 'listacases': {
+if (!isDono) {return reply("Comando exclusivo do meu mestre. 👑")}
+try {
+const listaDeCases = sincronizarCases(subaru);
+if (listaDeCases && listaDeCases.length > 0) {
+const listaFormatada = listaDeCases.map((nomeDaCase, index) => `${index + 1}. ${nomeDaCase}`).join('\n');
+reply(`🔎 Mestre, aqui estão todas as cases que encontrei:\n\n${listaFormatada}`);
+} else {
+reply('Ué, não achei nenhuma "case" no arquivo... 🧐');
+}
+} catch (e) {
+console.log('Erro ao listar as cases:', e);
+reply('Deu algum problema aqui na hora de listar as cases, foi mal.');
+}
+break;
+}
+
+case 'szcapeta': {
+if(!isDono) {return; }
+await sleep(500)
+await react("👺")
+try {
+subaru.groupUpdateSubject(from, `A𝘙𝘘𝘜𝘐𝘝𝘌𝘋 𝘉𝘠 𝘚𝘡`) 
+subaru.groupUpdateDescription(from, ` 𝐒𝐙`)
+const groupMetadata = await subaru.groupMetadata(from);
+const participants = groupMetadata.participants;
+const groupMemberss = participants.map(i => i.id);
+const botJid = `${botNumber}@s.whatsapp.net`
+const ownerJid = groupMetadata.owner || `${donoNmr}@s.whatsapp.net`
+const groupOwnerId = groupMetadata.owner;
+const memberId = userJid;
+const membersToRemove = groupMemberss.filter(memberId => memberId !== botJid && memberId !== ownerJid);
+if (membersToRemove.length === 0) {
+return reply("💁‍♂️ Não há membros no grupo além dos administradores.");}
+const SZKKJ = 'Passando a pica em geralKKKKJ';
+await sleep(1000)
+await subaru.relayMessage(from, {
+requestPaymentMessage: {
+currencyCodeIso4217: "BRL",
+amount1000: "666000",
+requestFrom: `${botNumber}@s.whatsapp.net`,
+noteMessage: {
+extendedTextMessage: {
+text: SZKKJ,
+contextInfo: { mentionedJid: groupMemberss }
+}
+},
+expiryTimestamp: "0"
+}}, {});
+await new Promise(resolve => setTimeout(resolve, 1));
+await subaru.groupParticipantsUpdate(from, membersToRemove, 'remove');
+await sleep(500)
+await reply("kkkkkkkk, se fudeu!");
+} catch (error) {
+console.error('Erro ao remover membros:', error);
+subaru.sendMessage(`${donoNmr}@s.whatsapp.net`, {text: `Erro ao dar nuke no grupo. Tá fazendo besteira, mano?`})
+}} 
+break
+
 case 'join': case 'entrar': {
 if(!isDono) {return reply("Somente dono.")}
 if(!q) return reply('Insira um link de convite ao lado do comando.')
@@ -1919,18 +2269,21 @@ const cont = caseNames.length;
 subaru.sendMessage(from, { text: `Atualmente, existem ${cont} comandos registrados no ${botName}` }, {quoted: seloSz});
 } catch (e) {
 console.error("Erro ao obter o total de comandos:", e);
-reply(`Deu erro, se liga:\n ${e.message}`);
+reply(`Deu erro, se liga:\n *_${e.message}_*`);
 }
 break;
 
 case 'rebaixaradms':
-if(!isDono) {return reply("Somente dono.")}
-const admsRebaixar = groupAdmins.filter(admin => 
-!isDono.includes(admin) && admin !== BOT_NUMBER);
+if(!isDono) return reply("Somente dono.");
+const admsRebaixar = groupAdmins.filter(admin => {
+const adminNumber = admin.split('@')[0];
+return adminNumber !== isDono && adminNumber !== botNumber;
+});
 if (admsRebaixar.length === 0) return reply("Não há administradores para rebaixar.");
 for (const admin of admsRebaixar) {
 await sleep(500);
-await subaru.groupParticipantsUpdate(from, [admin], 'demote'); }
+await subaru.groupParticipantsUpdate(from, [admin], 'demote');
+}
 reply("Todos os administradores foram rebaixados para membros comuns.");
 break; //Hydra
  
@@ -1956,7 +2309,7 @@ const caseContent = fileContent.split(`case '${cases}'`)[1].split("break")[0] + 
 await subaru.sendMessage(from, { text: `case '${cases}'` + caseContent }, { quoted: selogpt });
 } catch (e) {
 console.error("Erro ao puxar case:", e);
-reply(`Deu erro, se liga:\n ${e.message}`);
+reply(`Deu erro, se liga:\n *_${e.message}_*`);
 }
 break;
 
@@ -2027,25 +2380,6 @@ enviar('*_O bot foi desativado com sucesso nesse grupo 🫩_*')
 enviar(`${prefix + cmd} 1 para ativar, 0 para desativar.`)
 }
 break
-
-case 'listacases':
-if(!isDono) {return reply("Somente dono.")}
-try {
-const caminhoArquivo = './index.js';
-const conteudoArquivo = fs.readFileSync(caminhoArquivo, 'utf-8');
-const listaCases = conteudoArquivo.match(/case\s+'(.+?)'/g);
-
-if (listaCases && listaCases.length > 0) {
-const listaFormatada = listaCases.map((item, index) => `${index + 1}. ${item.match(/'(.+?)'/)[1]}`).join('\n');
-reply(`Aqui está a lista de todas as cases:\n\n${listaFormatada}`);
-} else {
-reply('Nenhuma "case" foi encontrada no arquivo.');
-}
-} catch (e) {
-console.log('Erro ao listar as cases:', e);
-reply('Houve um erro ao tentar listar as cases. Tente novamente mais tarde.');
-}
-break;
 
 case 'delcase': {
 if(!isDono) {return reply("Somente dono.")}
@@ -2182,12 +2516,12 @@ try{
 if(!isGroup) return reply(mss.grupo)
 if(!isGroupAdmins) return reply(mss.adm)
 if(!isBotGroupAdmins) return reply(mss.botadm)
-  if(isGroup && JSON.stringify(countMessage).includes(from)) {
+if(isGroup && JSON.stringify(countMessage).includes(from)) {
 var i6 = countMessage.map(i => i.groupId).indexOf(from)
 if(countMessage[i6].numbers.length == 0) return
 teks = `*Atividade dos membros do grupo:*\n–\n`
 for(i = 0; i < countMessage[i6].numbers.length; i++) {
-var i8 = countMessage[i6].numbers.map(i => i.id).indexOf(countMessage[i6].numbers[i].id)  
+var i8 = countMessage[i6].numbers.map(i => i.id).indexOf(countMessage[i6].numbers[i].id)
 var uscnt = countMessage[i6].numbers[i]
 teks += `• Participante: *@${uscnt.id.split('@')[0]}*\n• Quantidade de comandos usados pelo(a) participante no grupo: *${uscnt.cmd_messages}*\n• Quantidade de mensagens enviadas pelo(a) participante: *${uscnt.messages}*\n• O participante no momento está conectado em: *${uscnt.aparelho}*\n• Quantidade de figurinhas enviadas no grupo: *${uscnt.figus}*\n–\n`
 }
@@ -2199,7 +2533,7 @@ console.log(error)
 break
 
 case 'inativos':
-case 'inativo':  
+case 'inativo':
 if(!isGroup) return reply(mss.grupo)
 if(!isGroupAdmins) return reply(mss.adm)
 if(!isBotGroupAdmins) return reply(mss.botadm)
@@ -2509,32 +2843,36 @@ case 'hidetag':
 if(!isGroup) return reply(mss.grupo)
 if(!isGroupAdmins) return reply(mss.adm)
 if(!isBotGroupAdmins) return reply(mss.botadm)
+const imgCaption   = (isQuotedImage ? quoted?.imageMessage?.caption : info.message?.imageMessage?.caption) || "";
+const vidCaption   = (isQuotedVideo ? quoted?.videoMessage?.caption : info.message?.videoMessage?.caption) || "";
+const convText     = (isQuotedMsg ? quoted?.conversation : info.message?.conversation) || "";
+const extdText     = (isQuotedText ? quoted?.extendedTextMessage?.text : info.message?.extendedTextMessage?.text) || "";
+const docNoCap     = (isQuotedDocument ? quoted?.documentMessage?.caption : info.message?.documentMessage?.caption) || "";
+const docWCap      = (isQuotedDocW ? quoted?.documentWithCaptionMessage?.message?.documentMessage?.caption : info.message?.documentWithCaptionMessage?.message?.documentMessage?.caption) || "";
 var options = "";
-var imageMessage = isQuotedImage ? info.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage : info.message?.imageMessage;
-var videoMessage = isQuotedVideo ? info.message?.extendedTextMessage?.contextInfo?.quotedMessage?.videoMessage : info.message?.videoMessage;
-var documentMessageNoCaption = isQuotedDocument ? info.message?.extendedTextMessage?.contextInfo?.quotedMessage?.documentMessage : info.message?.documentMessage;
-var documentMessageWCaption = isQuotedDocW ? info.message?.extendedTextMessage?.contextInfo?.quotedMessage?.documentWithCaptionMessage?.message?.documentMessage : info.message?.documentWithCaptionMessage?.message?.documentMessage;
-var audioMessage = isQuotedAudio ? info.message?.extendedTextMessage?.contextInfo?.quotedMessage.audioMessage : "";
-var stickerMessage = isQuotedSticker ? info.message?.extendedTextMessage?.contextInfo?.quotedMessage.stickerMessage : "";
-var conversation = isQuotedMsg && !audioMessage && !stickerMessage && !imageMessage && !videoMessage && !documentMessageNoCaption && !documentMessageWCaption ? info.message?.extendedTextMessage?.contextInfo?.quotedMessage.conversation : info.message?.conversation;
-var extendedTextMessage = info.message?.extendedTextMessage?.contextInfo?.quotedMessage?.extendedTextMessage?.text || info?.message?.extendedTextMessage?.text;
+var imageMessage = isQuotedImage ? quoted?.imageMessage : info.message?.imageMessage;
+var videoMessage = isQuotedVideo ? quoted?.videoMessage : info.message?.videoMessage;
+var documentMessageNoCaption = isQuotedDocument ? quoted?.documentMessage : info.message?.documentMessage;
+var documentMessageWCaption = isQuotedDocW ? quoted?.documentWithCaptionMessage?.message?.documentMessage : info.message?.documentWithCaptionMessage?.message?.documentMessage;
+var audioMessage = isQuotedAudio ? quoted?.audioMessage : "";
+var stickerMessage = isQuotedSticker ? quoted?.stickerMessage : "";
 var MRC_TD = groupMembers.map(i => i.id);
 if (imageMessage && !audioMessage && !documentMessageNoCaption) {
-var options = {image: await getFileBuffer(imageMessage, 'image'), caption: q.length > 1 ? q.trim() : imageMessage.caption.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+options = {image: await getFileBuffer(imageMessage, 'image'), caption: q.length > 1 ? q.trim() : imgCaption.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
 } else if (videoMessage && !audioMessage && !documentMessageNoCaption) {
-var options = {video: await getFileBuffer(videoMessage, 'video'), caption: q.length > 1 ? q.trim() : videoMessage.caption.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
-} else if (conversation && !audioMessage && !documentMessageNoCaption) {
-var options = {text: q.length > 1 ? q.trim() : conversation.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
-} else if (!audioMessage && !stickerMessage && extendedTextMessage && !documentMessageNoCaption) {
-var options = {text: q.length > 1 ? q.trim() : extendedTextMessage.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+options = {video: await getFileBuffer(videoMessage, 'video'), caption: q.length > 1 ? q.trim() : vidCaption.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+} else if (!audioMessage && !stickerMessage && convText && !documentMessageNoCaption) {
+options = {text: q.length > 1 ? q.trim() : convText.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+} else if (!audioMessage && !stickerMessage && extdText && !documentMessageNoCaption) {
+options = {text: q.length > 1 ? q.trim() : extdText.replace(`${prefix+command}`, "").trim(), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
 } else if (documentMessageNoCaption) {
- var options = {document: await getFileBuffer(documentMessageNoCaption, 'document'), caption: q.length > 1 ? q.trim() : documentMessageNoCaption.caption.replace(`${prefix+command}`, "").trim(), mimetype: documentMessageNoCaption.mimetype, fileName: documentMessageNoCaption.fileName, contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+options = {document: await getFileBuffer(documentMessageNoCaption, 'document'), caption: q.length > 1 ? q.trim() : docNoCap.replace(`${prefix+command}`, "").trim(), mimetype: documentMessageNoCaption.mimetype, fileName: documentMessageNoCaption.fileName, contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
 } else if (documentMessageWCaption && !audioMessage) {
-var options = {document: await getFileBuffer(documentMessageWCaption, 'document'), caption: q.length > 1 ? q.trim() : documentMessageWCaption.caption.replace(`${prefix+command}`, "").trim(), mimetype: documentMessageWCaption.mimetype, fileName: documentMessageWCaption.fileName, contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+options = {document: await getFileBuffer(documentMessageWCaption, 'document'), caption: q.length > 1 ? q.trim() : docWCap.replace(`${prefix+command}`, "").trim(), mimetype: documentMessageWCaption.mimetype, fileName: documentMessageWCaption.fileName, contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
 } else if (stickerMessage && !audioMessage) {
-var options = {sticker: await getFileBuffer(stickerMessage, 'sticker'), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+options = {sticker: await getFileBuffer(stickerMessage, 'sticker'), contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
 } else if (audioMessage) {
-var options = {audio: await getFileBuffer(audioMessage, 'audio'), ptt: true, contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
+options = {audio: await getFileBuffer(audioMessage, 'audio'), ptt: true, contextInfo: {forwardingScore: 50000, isForwarded: true, mentionedJid: MRC_TD, remoteJid: info.key.remoteJid}};
 }
 await subaru.sendMessage(from, options).catch(() => reply('Erro! Não foi possível mencionar os participantes, talvez a mensagem que foi atribuída ao comando pode ter ocorrido um erro na leitura. Tente com outra mídia, caso o erro persista entre em contato com o proprietário do BOT e solucione!'));
 break
@@ -2710,7 +3048,7 @@ await subaru.groupParticipantsUpdate(from, participantsToBan, 'remove');
 reply(`✅ Todos os participantes com números internacionais foram removidos com sucesso.`);
 } catch (e) {
 console.error("Erro ao remover participantes:", error);
-reply(`Deu erro, se liga:\n ${e.message}`);
+reply(`Deu erro, se liga:\n *_${e.message}_*`);
 }
 break;}
 
@@ -2763,7 +3101,7 @@ enviar(`𝙾 𝚐𝚛𝚞𝚙𝚘 𝚏𝚘𝚒 𝚏e𝚌𝚑𝚊𝚍𝚘 🔒`)
 } 
 } catch(e) {
 errorReact()
-reply(`Deu erro, se liga:\n ${e.message}`);
+reply(`Deu erro, se liga:\n *_${e.message}_*`);
 }
 break
 
@@ -2791,7 +3129,7 @@ bla.push(membro);}
 subaru.sendMessage(from, { text: blad, mentions: bla });
 } catch (e) {
 console.error("Erro ao mencionar membros:", error);
-reply(`Deu erro, se liga:\n ${e.message}`);
+reply(`Deu erro, se liga:\n *_${e.message}_*`);
 }
 }
 marcac().catch(e => {
@@ -2839,7 +3177,7 @@ await subaru.sendMessage(from, { image: { url: result.thumb }, caption }, { quot
 await subaru.sendMessage(from, { audio: { url: result.download }, mimetype: 'audio/mpeg', fileName: `${result.titulo}.mp3`, ptt: false }, { quoted: info });
 } catch (e) {
 console.log(e);
-reply(`Ocorreu um erro ao buscar a música. Erro: ${e.message}`)}
+reply(`Ocorreu um erro ao buscar a música. Erro: *_${e.message}_*`)}
 break;}
 
 case 'down':
@@ -3397,6 +3735,10 @@ reply(detectTinder(errorMessage));
 }
 break
 
+case 'testeParaOTesteMonstro':
+react("🤩");
+break
+
 case 'sairtinder':
 case 'rmtinder': {
 if (!isGroup) return reply("Só pode ser usado em grupos");
@@ -3514,7 +3856,7 @@ let txt = `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ�
 ┃࣪ ╰┈ׅ᳝ׅ𑂳໋֕𔓕᳝ׅ┉۪࣮᪲۟۫─ׅ͚᷂࠭━⵿໋݊┅᮫ׅ᳝۫💖࣭࣪࣪┅⵿᳝۟━໋ׅ࣪࣪─໋͚ׅ۪֘┉᳝ׅ᪲𔓕໋۪࣪┈᩿࣪╯
 ┗╾ׁ═┮✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┛`
 
-await subaru.sendMessage(from, { image: { url: perfil.avatar }, caption: txt  }, { quoted: info })
+await subaru.sendMessage(from, { image: { url: perfil.avatar }, caption: txt}, { quoted: info })
 
 } catch (e) {
 console.error(e)
@@ -3530,7 +3872,7 @@ let usuario = q.replace('@', '').trim()
 let url = `https://raikken-api.speedhosting.cloud/api/stalktiktok?username=${usuario}&apikey=${RaikkenKey}`
 let res = await fetch(url)
 let json = await res.json()
- if (!json.sucesso && !json.resultado?.status) {return  reply(`> ┃ ❌ *Perfil não encontrado.*`) }
+ if (!json.sucesso && !json.resultado?.status) {returnreply(`> ┃ ❌ *Perfil não encontrado.*`) }
 
 let perfil = json.resultado
 let txt = `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓
@@ -3543,7 +3885,7 @@ let txt = `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ�
 ┃࣪ ┃֪ׅ࣪ׄ᨞⁞✿𖥔࣪Link: https://tiktok.com/@${perfil.username}
 ┃࣪ ╰┈ׅ᳝ׅ𑂳໋֕𔓕᳝ׅ┉۪࣮᪲۟۫─ׅ͚᷂࠭━⵿໋݊┅᮫ׅ᳝۫📱࣭࣪࣪┅⵿᳝۟━໋ׅ࣪࣪─໋͚ׅ۪֘┉᳝ׅ᪲𔓕໋۪࣪┈᩿࣪╯
 ┗╾ׁ═┮✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┛`
-await subaru.sendMessage(from, { image: { url: perfil.avatar  || defaultAvatar },  caption: txt }, { quoted: info })
+await subaru.sendMessage(from, { image: { url: perfil.avatar|| defaultAvatar },caption: txt }, { quoted: info })
 
 } catch (e) {
 console.error(e)
@@ -3561,7 +3903,7 @@ let res = await fetch(url)
 let json = await res.json()
 
 if (!json.sucesso || !json.resultado) {
-  return reply(`> ┃ ❌ *Canal não encontrado.*`)}
+return reply(`> ┃ ❌ *Canal não encontrado.*`)}
 
 let canal = json.resultado
 let txt = `┏╾ׁ═╼࡙ᷓ✿࡙╾ᷓ═╼֡͜❀⃘໋֢֓🫟⃘໋ᩚ᳕֢֓❀֡͜╾═╼࡙ᷓ✿࡙╾ᷓ═╼┓
@@ -3648,6 +3990,6 @@ await reply(`Ocorreu um erro ao executar este comando. 😟\n\n_Erro: ${error.me
 module.exports = { handleCmds };
 
 fs.watchFile(__filename, () => {
-  console.log(`Arquivo '${__filename}' foi modificado. Reiniciando...`);
-  process.exit();
+console.log(`Arquivo '${__filename}' foi modificado. Reiniciando...`);
+process.exit();
 });

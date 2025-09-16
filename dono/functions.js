@@ -5,9 +5,9 @@
 * Raikken-API: https://whatsapp.com/channel/0029VbB75r1HFxOvPXYp7Z10
 */
 
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState,  fetchLatestBaileysVersion, isJidBroadcast, isJidStatusBroadcast, proto, makeInMemoryStore, makeCacheableSignalKeyStore, PHONENUMBER_MCC, delay, downloadContentFromMessage, relayWAMessage, mentionedJid, processTime, MediaType, Browser, MessageType, Presence, Mimetype, Browsers, getLastMessageInChat, WA_DEFAULT_EPHEMERAL, generateWAMessageFromContent, downloadAndSaveMedia, logger, getContentType, INativeFlowMessage, messageStubType, WAMessageStubType, BufferJSON, generateWAMessageContent, downloadMediaMessage } = require("baileys")
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState,fetchLatestBaileysVersion, isJidBroadcast, isJidStatusBroadcast, proto, makeInMemoryStore, makeCacheableSignalKeyStore, PHONENUMBER_MCC, delay, downloadContentFromMessage, relayWAMessage, mentionedJid, processTime, MediaType, Browser, MessageType, Presence, Mimetype, Browsers, getLastMessageInChat, WA_DEFAULT_EPHEMERAL, generateWAMessageFromContent, downloadAndSaveMedia, logger, getContentType, INativeFlowMessage, messageStubType, WAMessageStubType, BufferJSON, generateWAMessageContent, downloadMediaMessage } = require("baileys")
 
-const { prefix, donoName } = require('../configs/settings.json')
+const { prefix, donoName, donoNmr } = require('../configs/settings.json')
 const fs = require('fs');
 const path = require('path');
 const moment = require('moment-timezone')
@@ -208,15 +208,91 @@ var timed = 'Boa Tarde 馃寚'
 }
 if(hora > "19:00:00"){
 var timed = 'Boa Noite 馃寖' 
-}   
+} 
 
 function checkPrefix(body, prefix) {
-  return body?.startsWith(prefix);
+return body?.startsWith(prefix);
 }
 
-module.exports = { escolherPersonalidadeSubaru, escolherVideoPorRota, getFileBuffer, checkPrefix, fetchJson, getBuffer, data, hora }
+function loadJSON(path) {
+try { return JSON.parse(fs.readFileSync(path, 'utf-8'));
+} catch (err) { return [];}
+}
+
+function saveJSON(data, path) {
+fs.writeFileSync(path, JSON.stringify(data, null, 2));
+}
+
+const esperar = (tempo) => {
+return new Promise(resolve => setTimeout(resolve, tempo));
+}
+
+// A função abaixo não foi feita por mim, Sz, apenas adaptei.
+// O real criador apenas pediu para deixar os créditos (por isso o John repetitivo, kkkkkk).
+
+// --------------- [ SISTEMA DE NOVIDADES - FUNÇÕES AUXILIARES ] ---------------
+function verificarPastaNovidades() {
+const pastaNovidades = './configs/novidades';
+if (!fs.existsSync(pastaNovidades)) {
+fs.mkdirSync(pastaNovidades, { recursive: true });
+}
+}
+//Jonh
+function saveJSON2(caminhoArquivo, conteudo) {
+const pastaPai = path.dirname(caminhoArquivo);
+if (!fs.existsSync(pastaPai)) {
+fs.mkdirSync(pastaPai, { recursive: true });
+}
+fs.writeFileSync(caminhoArquivo, JSON.stringify(conteudo, null, 2), 'utf-8');
+}
+function lerOuCriarJSON(caminhoArquivo) {
+verificarPastaNovidades();
+try {
+const conteudo = fs.readFileSync(caminhoArquivo, 'utf-8');
+return JSON.parse(conteudo);
+} catch (error) {
+console.error(`Ops, não deu pra ler o JSON em ${caminhoArquivo}:`, error);
+return [];
+}
+}
+// ------------------- [ CONFIGURAÇÕES PRINCIPAIS - By Jhon ] -------------------
+const caminhoIndex = './index.js';
+const caminhoCases = './configs/novidades/cases.json';
+const caminhoNews = './configs/novidades/news.json';
+// ------------------- [ SINCRONIZAR CASES - By Jhon ] -------------------
+function sincronizarCases(subaru) {
+try {
+const conteudoIndex = fs.readFileSync(caminhoIndex, 'utf-8');
+const matchesCases = conteudoIndex.match(/case\s*['"](.+?)['"]/g);
+const nomesCasesIndex = matchesCases
+  ? matchesCases.map(c => c.match(/['"](.+?)['"]/)[1])
+  : [];
+const comandosSalvos = lerOuCriarJSON(caminhoCases);
+const nomesComandosSalvos = comandosSalvos.map(cmd => cmd.Comando);
+const novosCases = nomesCasesIndex.filter(nome => !nomesComandosSalvos.includes(nome));
+const objNovosComandos = novosCases.map(nome => ({
+Comando: nome,
+Função: 'Descrição pendente.'
+}));
+saveJSON2(caminhoNews, objNovosComandos);
+saveJSON2(caminhoCases, [...comandosSalvos, ...objNovosComandos]);
+if (novosCases.length > 0) {
+  subaru.sendMessage(`${donoNmr}@s.whatsapp.net`, {
+    text: `🔥 Opa, ${donoName}, novos comandos detectados: ${novosCases.join(', ')}`
+  })};
+//console.log('matchesCases:', matchesCases);
+//console.log('nomesCasesIndex:', nomesCasesIndex);
+//console.log('novosCases:', novosCases);
+return nomesCasesIndex || [];
+} catch (error) {
+console.error('Xii, deu erro ao sincronizar os cases:', error);
+}}
+// ------------------- [ FIM DO SISTEMA DE NOVIDADES - By Jhon ] -------------------
+
+
+module.exports = { escolherPersonalidadeSubaru, escolherVideoPorRota, getFileBuffer, checkPrefix, fetchJson, getBuffer, data, hora, loadJSON,saveJSON, saveJSON2, sincronizarCases, lerOuCriarJSON, esperar }
 
 fs.watchFile(__filename, () => {
-  console.log(`Arquivo '${__filename}' foi modificado. \nReiniciando...`);
-  process.exit();
+console.log(`Arquivo '${__filename}' foi modificado. \nReiniciando...`);
+process.exit();
 });

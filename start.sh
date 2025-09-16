@@ -1,7 +1,6 @@
 #!/bin/bash
 clear
 
-# Cores
 BLUE='\033[1;34m'
 WHITE='\033[1;37m'
 YELLOW='\033[1;33m'
@@ -16,19 +15,19 @@ printf "${BLUE}║${GRAY}                 By: Sz.               ${BLUE}║${RESE
 printf "${BLUE}╚══════╌✯╌═⊱×⊰ RAIKKEN-API ⊰×⊰═╌✯╌══════╝${RESET}\n\n"
 
 if [ ! -d "node_modules" ]; then
-  printf "${YELLOW}📦 Instalando dependências...${RESET}\n"
-  npm install
-  printf "${GREEN}✅ Dependências instaladas com sucesso!${RESET}\n"
+printf "${YELLOW}📦 Instalando dependências...${RESET}\n"
+npm install
+printf "${GREEN}✅ Dependências instaladas com sucesso!${RESET}\n"
 fi
 
 SESSION_DIR="./configs/session"
 
+while true
+do
 if [ -d "$SESSION_DIR" ] && [ "$(ls -A $SESSION_DIR)" ]; then
-  printf "${GREEN}✅ Sessão encontrada. Iniciando...${RESET}\n"
-  npm start --code
-  exit 0
-fi
-
+printf "${GREEN}✅ Sessão encontrada. Iniciando...${RESET}\n"
+npm start
+else
 printf "\n"
 printf "${CYAN}Nenhuma sessão encontrada! Como deseja parear o bot?${RESET}\n"
 printf "${YELLOW}1)${RESET} QR Code\n"
@@ -37,20 +36,24 @@ printf "${YELLOW}3)${RESET} Sair\n\n"
 read -p "Escolha uma opção [1-3]: " opcao
 
 case $opcao in
-  1)
-    printf "${CYAN}🔗 Iniciando pareamento via QR Code...${RESET}\n"
-    node conection.js
-    ;;
-  2)
-    printf "${CYAN}🔗 Iniciando pareamento via Código numérico...${RESET}\n"
-    node conection.js --code
-    ;;
-  3)
-    printf "${YELLOW}❌ Saindo...${RESET}\n"
-    exit 0
-    ;;
-  *)
-    printf "${YELLOW}⚠️ Opção inválida! Execute novamente.${RESET}\n"
-    exit 1
-    ;;
+1)
+printf "${CYAN}🔗 Iniciando pareamento via QR Code...${RESET}\n"
+node conection.js
+;;
+2)
+printf "${CYAN}🔗 Iniciando pareamento via Código numérico...${RESET}\n"
+node conection.js --code
+;;
+3)
+printf "${YELLOW}❌ Saindo...${RESET}\n"
+exit 0
+;;
+*)
+printf "${YELLOW}⚠️ Opção inválida! Execute novamente.${RESET}\n"
+exit 1
+;;
 esac
+fi
+printf "${YELLOW}⚠️ O bot foi finalizado. Reiniciando em 3s...${RESET}\n"
+sleep 3
+done

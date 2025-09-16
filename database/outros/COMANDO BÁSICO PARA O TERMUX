@@ -1,0 +1,60 @@
+*🧠 COMANDOS BÁSICOS DO TERMUX – INICIANTE*
+
+❃•≫────≪•◦ ❃ ◦•≫────≪•❃
+*IMPORTANTE:*
+```
+termux-setup-storage
+pkg update && pkg upgrade -y```
+
+❃•≫────≪•◦ ❃ ◦•≫────≪•❃
+
+*📦 Instalar pacotes úteis para bots:*
+```
+pkg upgrade -y && pkg update -y && pkg install git -y && pkg install nodejs-lts -y && pkg install ffmpeg -y
+```
+
+❃•≫────≪•◦ ❃ ◦•≫────≪•❃
+
+*📁 Navegar pelas pastas:*
+```
+ls ---------->  listar arquivos
+cd nome ------>  entrar em pasta
+cd .. ------------>  voltar uma pasta
+cd / -----------> ex: cd /downloads/nome da pasta em "downloads"
+cd ~ ------------> vai pra pasta pessoal (/data/data/com.termux/files/home)
+
+pwd ------------>  ver caminho atual
+mkdir nome  ----->  criar nova pasta
+rm nome  --------->  apagar arquivo
+rm -rf pasta  ----->  apagar pasta e tudo dentro (cuidado!)```
+
+❃•≫────≪•◦ ❃ ◦•≫────≪•❃
+
+*🐍 Rodar scripts Python:*
+```
+nano script.py ----->  cria e edita um script
+
+escreve o código e salva com CTRL+X, Y, Enter
+
+python script.py ----->  executa o script```
+
+❃•≫────≪•◦ ❃ ◦•≫────≪•❃
+
+*🌐 Clonar repositório do GitHub:*
+```
+git clone https://github.com/andy-botkkj/Subaru-Base
+cd Subaru-Base ```
+
+❃•≫────≪•◦ ❃ ◦•≫────≪•❃
+
+*📜 Ler ou editar arquivos:*
+```
+cat arquivo.txt ----->  mostra o conteúdo
+nano arquivo.txt ----->  edita o arquivo```
+
+❃•≫────≪•◦ ❃ ◦•≫────≪•❃
+
+*🎯 Ver todos os pacotes disponíveis:*
+```
+pkg list-all```
+

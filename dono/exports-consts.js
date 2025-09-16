@@ -14,8 +14,10 @@ const moment = require('moment-timezone');
 const FormData = require("form-data");
 const cheerio = require('cheerio');
 //const cfonts = require('cfonts')
+const util = require('util');
 
 // -------------------( MÓDULOS DO PROJETO )-------------------
+const { loadJSON,  saveJSON } = require('./functions.js')
 const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('../database/figurinhas/exif');
 const { imageToWebp2, videoToWebp2, writeExifImg2, writeExifVid2 } = require('../database/figurinhas/exif2');
 
@@ -69,5 +71,8 @@ module.exports = {
   videoToWebp2,
   writeExifImg2,
   writeExifVid2,
-  getMembros
+  getMembros,
+  util,
+  loadJSON,  
+  saveJSON
 };
